@@ -1,5 +1,5 @@
 import simple_orm.models as models
-from simple_orm.models import IntegerField, TextField
+from simple_orm.models import IntegerField, TextField, ForeignKey, JsonField
 from simple_orm.models import simple_orm
 from pathlib import Path
 import sys
@@ -17,5 +17,7 @@ class Box(models.Model):
 
 @simple_orm
 class Circle(models.Model):
+    box = ForeignKey(object_class=Box, foreign_field='name')
     name = TextField()
     radius = IntegerField()
+    data = JsonField()

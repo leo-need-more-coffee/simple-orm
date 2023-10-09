@@ -1,11 +1,10 @@
 from models import Box, Circle
 
-Box.objects.add(Box("BOX 1", 1, 1))
-Box.objects.add(Box("BOX 2", 1, 1))
-Box.objects.add(Box("BOX 3", 2, 2))
-Circle.objects.add(Circle("CIRCLE 1", 5))
+Box.objects.add(Box('BOX 1', 1, 1))
+
+Circle.objects.add(Circle(Box.objects.get(width=1, height=1), "CIRCLE 1", 5, {'data':5}))
 
 print(Box.objects.filter(width=1, height=1).json())
-print(Box.objects.get(name="BOX 1").json())
-Box.objects.delete(name="BOX 2")
+print(Circle.objects.get(name="CIRCLE 1").json())
+Box.objects.delete(name="BOX 1")
 print(Box.objects.all().json())

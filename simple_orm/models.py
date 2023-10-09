@@ -1,11 +1,98 @@
 import json
 import sqlite3
+import asyncio
+import copy
+import sys
 
 db_name = 'db.sqlite3'
 
 
-def simple_orm(class_:type):
+def str_to_class(classname):
+    return getattr(sys.modules[__name__], classname)
+
+
+class IntegerField:
+    field_type = 'INTEGER'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: int = None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class TextField:
+    field_type = 'TEXT'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: str = None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class BlobField:
+    field_type = 'BLOB'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: bool = None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class RealField:
+    field_type = 'REAL'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class NumericField:
+    field_type = 'NUMERIC'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class JsonField:
+    field_type = 'JSON'
+
+    def __init__(self, unique: bool = False, primary_key: bool = False,
+                 null: bool = True, default=None):
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+class ForeignKey:
+    field_type = 'FOREIGN_KEY'
+
+    def __init__(self, object_class: type, foreign_field: str, unique: bool = False, primary_key: bool = False,
+                 null: bool = True, default=None):
+        self.object_class = object_class,
+        self.foreign_field = foreign_field,
+        self.unique = unique
+        self.primary_key = primary_key
+        self.null = null
+        self.default = default
+
+
+SIMPLE_TYPES = [IntegerField, TextField, BlobField, RealField, NumericField]
+EXTERN_TYPES = {}
+
+
+def simple_orm(class_: type):
+    EXTERN_TYPES[class_.__name__] = class_
     class_.objects.__createTable__()
+
     return class_
 
 
@@ -38,10 +125,21 @@ class Object:
         conn = sqlite3.connect(db_name)
         cursor = conn.cursor()
 
+        d = copy.copy(obj.__dict__)
+
         object_type_name = self.object_type.__name__
+        for key, value in vars(self.object_type).items():
+            if not key.startswith("__") and not callable(value):
+                if type(value) in SIMPLE_TYPES:
+                    continue
+                if type(value) == JsonField:
+                    d[key] = json.dumps(d[key])
+                if type(value) == ForeignKey:
+                    d[key] = json.dumps({'type': value.object_class[0].__name__, 'key': value.foreign_field[0], 'value': getattr(d[key], value.foreign_field[0])})
+
         insert_sql = f'INSERT INTO {object_type_name} ({", ".join(obj.__dict__.keys())}) VALUES ({", ".join(["?"] * len(obj.__dict__))});'
 
-        values = tuple(obj.__dict__.values())
+        values = tuple(d.values())
 
         cursor.execute(insert_sql, values)
         conn.commit()
@@ -68,7 +166,14 @@ class Object:
         if row:
             obj = self.object_type()
             for i, value in enumerate(row):
-                setattr(obj, cursor.description[i][0], value)
+                if type(getattr(obj, cursor.description[i][0])) == JsonField:
+                    setattr(obj, cursor.description[i][0], json.loads(value))
+                elif type(getattr(obj, cursor.description[i][0])) == ForeignKey:
+                    value = json.loads(value)
+                    setattr(obj, cursor.description[i][0], EXTERN_TYPES[value['type']].objects.get(**{value['key']: value['value']}))
+                else:
+                    setattr(obj, cursor.description[i][0], value)
+
             return obj
         else:
             return None
@@ -150,6 +255,11 @@ class Object:
                 is_null = value.null
                 default_value = value.default
 
+                if value.field_type == 'FOREIGN_KEY':
+                    field_type = "TEXT"
+                if value.field_type == 'JSON':
+                    field_type = 'TEXT'
+
                 field_declaration = [f'"{field_name}" {field_type}']
 
                 if is_primary_key:
@@ -168,7 +278,6 @@ class Object:
             {", ".join(custom_fields)}
         );
         '''
-
         cursor.execute(create_table_sql)
 
         conn.commit()
@@ -199,52 +308,3 @@ class Model:
 
         return attributes
 
-
-class IntegerField:
-    field_type = 'INTEGER'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: int = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class TextField:
-    field_type = 'TEXT'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: str = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class BlobField:
-    field_type = 'BLOB'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: bool = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class RealField:
-    field_type = 'REAL'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class NumericField:
-    field_type = 'NUMERIC'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
