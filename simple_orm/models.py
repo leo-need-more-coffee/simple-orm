@@ -162,7 +162,15 @@ class Object:
         for row in rows:
             obj = self.object_type()
             for i, value in enumerate(row):
-                setattr(obj, cursor.description[i][0], value)
+                if type(getattr(obj, cursor.description[i][0])) == JsonField:
+                    setattr(obj, cursor.description[i][0], json.loads(value))
+                elif type(getattr(obj, cursor.description[i][0])) == ForeignKey:
+                    value = json.loads(value)
+                    setattr(obj, cursor.description[i][0],
+                            EXTERN_TYPES[value['type']].objects.get(**{value['key']: value['value']}))
+                else:
+                    setattr(obj, cursor.description[i][0], value)
+
             objects.append(obj)
 
         return ListOfObjects(objects)
@@ -182,7 +190,14 @@ class Object:
         for row in rows:
             obj = self.object_type()
             for i, value in enumerate(row):
-                setattr(obj, cursor.description[i][0], value)
+                if type(getattr(obj, cursor.description[i][0])) == JsonField:
+                    setattr(obj, cursor.description[i][0], json.loads(value))
+                elif type(getattr(obj, cursor.description[i][0])) == ForeignKey:
+                    value = json.loads(value)
+                    setattr(obj, cursor.description[i][0],
+                            EXTERN_TYPES[value['type']].objects.get(**{value['key']: value['value']}))
+                else:
+                    setattr(obj, cursor.description[i][0], value)
             objects.append(obj)
 
         return ListOfObjects(objects)
