@@ -3,89 +3,12 @@ import sqlite3
 import asyncio
 import copy
 import sys
+from .basic_types import BaseType, IntegerField, TextField, BlobField, RealField, NumericField, JsonField, ForeignKey
 
 db_name = 'db.sqlite3'
 
 
-def str_to_class(classname):
-    return getattr(sys.modules[__name__], classname)
-
-
-class IntegerField:
-    field_type = 'INTEGER'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: int = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class TextField:
-    field_type = 'TEXT'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: str = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class BlobField:
-    field_type = 'BLOB'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: bool = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class RealField:
-    field_type = 'REAL'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class NumericField:
-    field_type = 'NUMERIC'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False, null: bool = True, default: float = None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class JsonField:
-    field_type = 'JSON'
-
-    def __init__(self, unique: bool = False, primary_key: bool = False,
-                 null: bool = True, default=None):
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-class ForeignKey:
-    field_type = 'FOREIGN_KEY'
-
-    def __init__(self, object_class: type, foreign_field: str, unique: bool = False, primary_key: bool = False,
-                 null: bool = True, default=None):
-        self.object_class = object_class,
-        self.foreign_field = foreign_field,
-        self.unique = unique
-        self.primary_key = primary_key
-        self.null = null
-        self.default = default
-
-
-SIMPLE_TYPES = [IntegerField, TextField, BlobField, RealField, NumericField]
+BASIC_TYPES = [IntegerField, TextField, BlobField, RealField, NumericField]
 EXTERN_TYPES = {}
 
 
@@ -130,7 +53,7 @@ class Object:
         object_type_name = self.object_type.__name__
         for key, value in vars(self.object_type).items():
             if not key.startswith("__") and not callable(value):
-                if type(value) in SIMPLE_TYPES:
+                if type(value) in BASIC_TYPES:
                     continue
                 if type(value) == JsonField:
                     d[key] = json.dumps(d[key])
@@ -140,8 +63,30 @@ class Object:
         insert_sql = f'INSERT INTO {object_type_name} ({", ".join(obj.__dict__.keys())}) VALUES ({", ".join(["?"] * len(obj.__dict__))});'
 
         values = tuple(d.values())
-
         cursor.execute(insert_sql, values)
+        conn.commit()
+        conn.close()
+
+    def save(self, obj):
+        conn = sqlite3.connect(db_name)
+        cursor = conn.cursor()
+
+        d = copy.copy(obj.__dict__)
+
+        object_type_name = self.object_type.__name__
+        for key, value in vars(self.object_type).items():
+            if not key.startswith("__") and not callable(value):
+                if type(value) in BASIC_TYPES:
+                    continue
+                if type(value) == JsonField:
+                    d[key] = json.dumps(d[key])
+                if type(value) == ForeignKey:
+                    d[key] = json.dumps({'type': value.object_class[0].__name__, 'key': value.foreign_field[0], 'value': getattr(d[key], value.foreign_field[0])})
+
+        upsert_sql = f'INSERT OR REPLACE INTO {object_type_name} ({", ".join(obj.__dict__.keys())}) VALUES ({", ".join(["?"] * len(obj.__dict__))});'
+
+        values = tuple(d.values())
+        cursor.execute(upsert_sql, values)
         conn.commit()
         conn.close()
 
@@ -248,10 +193,10 @@ class Object:
         custom_fields = []
         for key, value in vars(self.object_type).items():
             if not key.startswith("__") and not callable(value):
+                print(value.__dict__)
                 field_name = key
                 field_type = value.field_type
                 is_unique = value.unique
-                is_primary_key = value.primary_key
                 is_null = value.null
                 default_value = value.default
 
@@ -262,8 +207,6 @@ class Object:
 
                 field_declaration = [f'"{field_name}" {field_type}']
 
-                if is_primary_key:
-                    field_declaration.append('PRIMARY KEY')
                 if is_unique:
                     field_declaration.append('UNIQUE')
                 if not is_null:
